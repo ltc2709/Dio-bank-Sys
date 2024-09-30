@@ -1,86 +1,122 @@
-class ContaBancaria:
-    def __init__(self, agencia, numero_conta, usuario):
-        self.agencia = agencia
-        self.numero_conta = numero_conta
-        self.usuario = usuario
-        self.saldo = 0.0
-        self.depositos = []
-        self.saques = []
-        self.saques_diarios = 0
-        self.limite_saque = 500.0
-        self.limite_saques_diarios = 3
+class PessoaFisica:
+    def __init__(self, cpf, nome, data_nascimento):
+        self.cpf = cpf
+        self.nome = nome
+        self.data_nascimento = data_nascimento
 
-    def depositar(self, valor, /):  # Positional-only
-        if valor > 0:
-            self.saldo += valor
-            self.depositos.append(valor)
-            return self.saldo, self.extrato()
+class Cliente(PessoaFisica):
+    def __init__(self, cpf, nome, data_nascimento, endereco):
+        super().__init__(cpf, nome, data_nascimento)
+        self.endereco = endereco
+        self.contas = []
+
+    def adicionar_conta(self, conta):
+        self.contas.append(conta)
+
+class Historico:
+    def __init__(self):
+        self.transacoes = []
+
+    def adicionar_transacao(self, transacao):
+        self.transacoes.append(transacao)
+
+class Transacao:
+    def __init__(self, valor):
+        self.valor = valor
+
+    def registrar(self, conta):
+        pass
+
+class Deposito(Transacao):
+    def registrar(self, conta):
+        if self.valor > 0:
+            conta.saldo += self.valor
+            conta.historico.adicionar_transacao(f"Depósito de R$ {self.valor:.2f}")
+            return conta.saldo
         else:
             return "Valor de depósito inválido!"
 
-    def sacar(self, *, valor):  # Keyword-only
-        if self.saques_diarios >= self.limite_saques_diarios:
+class Saque(Transacao):
+    def registrar(self, conta):
+        if conta.saques_diarios >= conta.limite_saques_diarios:
             return "Limite diário de saques atingido."
-        elif valor > self.limite_saque:
-            return f"O valor de saque máximo é de R$ {self.limite_saque:.2f}."
-        elif valor > self.saldo:
+        elif self.valor > conta.limite_saque:
+            return f"O valor de saque máximo é de R$ {conta.limite_saque:.2f}."
+        elif self.valor > conta.saldo:
             return "Saldo insuficiente para realizar o saque."
         else:
-            self.saldo -= valor
-            self.saques.append(valor)
-            self.saques_diarios += 1
-            return self.saldo, self.extrato()
+            conta.saldo -= self.valor
+            conta.saques_diarios += 1
+            conta.historico.adicionar_transacao(f"Saque de R$ {self.valor:.2f}")
+            return conta.saldo
 
-    def extrato(self, saldo, /, *, extrato=True):  # Positional and keyword-only
+class Conta:
+    def __init__(self, agencia, numero, cliente):
+        self.saldo = 0.0
+        self.numero = numero
+        self.agencia = agencia
+        self.cliente = cliente
+        self.historico = Historico()
+
+    def saldo_atual(self):
+        return self.saldo
+
+    def sacar(self, valor):
+        saque = Saque(valor)
+        return saque.registrar(self)
+
+    def depositar(self, valor):
+        deposito = Deposito(valor)
+        return deposito.registrar(self)
+
+    def extrato(self):
         extrato_detalhes = "\nExtrato da Conta:\n"
-        extrato_detalhes += "Depósitos:\n"
-        for deposito in self.depositos:
-            extrato_detalhes += f"  + R$ {deposito:.2f}\n"
-        extrato_detalhes += "Saques:\n"
-        for saque in self.saques:
-            extrato_detalhes += f"  - R$ {saque:.2f}\n"
-        extrato_detalhes += f"Saldo atual: R$ {saldo:.2f}\n"
-        return extrato_detalhes if extrato else ""
+        for transacao in self.historico.transacoes:
+            extrato_detalhes += f"  - {transacao}\n"
+        extrato_detalhes += f"Saldo atual: R$ {self.saldo:.2f}\n"
+        return extrato_detalhes
+
+class ContaCorrente(Conta):
+    def __init__(self, agencia, numero, cliente, limite_saque=500.0, limite_saques_diarios=3):
+        super().__init__(agencia, numero, cliente)
+        self.limite_saque = limite_saque
+        self.limite_saques_diarios = limite_saques_diarios
+        self.saques_diarios = 0
 
 # Managing Users and Accounts
-usuarios = []
+clientes = []
 contas = []
 
 def criar_usuario(nome, data_nascimento, cpf, endereco):
-    # Storing only numbers from CPF
-    cpf = ''.join(filter(str.isdigit, cpf))
+    cpf = ''.join(filter(str.isdigit, cpf))  # Normalize CPF to digits only
     
     # Check if the CPF is already registered
-    for usuario in usuarios:
-        if usuario['cpf'] == cpf:
+    for cliente in clientes:
+        if cliente.cpf == cpf:
             return "Erro: CPF já cadastrado."
     
     # Register new user
-    usuario = {
-        'nome': nome,
-        'data_nascimento': data_nascimento,
-        'cpf': cpf,
-        'endereco': endereco
-    }
-    usuarios.append(usuario)
+    cliente = Cliente(cpf, nome, data_nascimento, endereco)
+    clientes.append(cliente)
     return f"Usuário {nome} cadastrado com sucesso!"
 
 def criar_conta_corrente(cpf):
     cpf = ''.join(filter(str.isdigit, cpf))  # Ensure only digits for CPF search
     
     # Find the user with the given CPF
-    usuario = next((user for user in usuarios if user['cpf'] == cpf), None)
+    cliente = next((c for c in clientes if c.cpf == cpf), None)
     
-    if usuario is None:
-        return "Erro: Usuário não encontrado."
+    if cliente is None:
+        return "Erro: Cliente não encontrado."
 
     # Generate new account number
     numero_conta = len(contas) + 1
     agencia = "0001"
     
     # Create new bank account
-    conta = ContaBancaria(agencia, numero_conta, usuario)
+    conta = ContaCorrente(agencia, numero_conta, cliente)
     contas.append(conta)
+    cliente.adicionar_conta(conta)
     
     return f"Conta criada com sucesso! Agência: {agencia}, Conta: {numero_conta}"
 
@@ -106,35 +142,37 @@ def main():
             print(criar_usuario(nome, data_nascimento, cpf, endereco))
 
         elif escolha == '2':
-            cpf = input("Digite o CPF do usuário: ")
+            cpf = input("Digite o CPF do cliente: ")
             print(criar_conta_corrente(cpf))
 
         elif escolha == '3':
-            cpf = input("Digite o CPF do usuário: ")
-            conta = next((c for c in contas if c.usuario['cpf'] == cpf), None)
+            cpf = input("Digite o CPF do cliente: ")
+            conta = next((c for c in contas if c.cliente.cpf == cpf), None)
             if conta:
                 valor = float(input("Digite o valor para depositar: R$ "))
-                saldo, extrato = conta.depositar(valor)
-                print(f"Saldo: R$ {saldo:.2f}\n{extrato}")
+                saldo = conta.depositar(valor)
+                print(f"Saldo: R$ {saldo:.2f}\n{conta.extrato()}")
             else:
                 print("Erro: Conta não encontrada.")
 
         elif escolha == '4':
-            cpf = input("Digite o CPF do usuário: ")
-            conta = next((c for c in contas if c.usuario['cpf'] == cpf), None)
+            cpf = input("Digite o CPF do cliente: ")
+            conta = next((c for c in contas if c.cliente.cpf == cpf), None)
             if conta:
                 valor = float(input("Digite o valor para sacar: R$ "))
-                saldo, extrato = conta.sacar(valor=valor)
-                print(f"Saldo: R$ {saldo:.2f}\n{extrato}")
+                saldo = conta.sacar(valor)
+                if isinstance(saldo, str):  # Se for uma mensagem de erro
+                 print(saldo)
+                else:
+                    print(f"Saldo: R$ {saldo:.2f}\n{conta.extrato()}")
             else:
                 print("Erro: Conta não encontrada.")
 
         elif escolha == '5':
-            cpf = input("Digite o CPF do usuário: ")
-            conta = next((c for c in contas if c.usuario['cpf'] == cpf), None)
+            cpf = input("Digite o CPF do cliente: ")
+            conta = next((c for c in contas if c.cliente.cpf == cpf), None)
             if conta:
-                saldo = conta.saldo
-                print(conta.extrato(saldo, extrato=True))
+                print(conta.extrato())
             else:
                 print("Erro: Conta não encontrada.")
 
